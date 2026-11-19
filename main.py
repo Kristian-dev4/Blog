@@ -25,6 +25,11 @@ ckeditor = CKEditor(app)
 Bootstrap5(app)
 
 
+@app.context_processor
+def inject_current_year():
+    return {"current_year": date.today().year}
+
+
 login_manager = LoginManager()
 login_manager.init_app(app)
 
@@ -83,7 +88,6 @@ with app.app_context():
     db.create_all()
 
 
-# TODO: Use Werkzeug to hash the user's password when creating a new user.
 @app.route("/register", methods=["GET", "POST"])
 def register():
     form = UserRegisterForm()
