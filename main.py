@@ -2,7 +2,6 @@ from datetime import date  # noqa: I001
 from flask import Flask, abort, render_template, redirect, url_for, flash
 from flask_bootstrap import Bootstrap5
 from flask_ckeditor import CKEditor
-from flask_gravatar import Gravatar
 from flask_login import (
     UserMixin,
     login_user,
@@ -16,7 +15,7 @@ from sqlalchemy.orm import relationship, DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import ForeignKey, Integer, String, Text
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
-from forms import CreatePostForm, UserLoginForm, UserRegisterForm
+from forms import CreatePostForm, UserLoginForm, UserRegisterForm, CreateCommentForm
 
 
 app = Flask(__name__)
@@ -77,6 +76,9 @@ class BlogPost(db.Model):
     author_id: Mapped[int | None] = mapped_column(ForeignKey("user.id"), nullable=True)
     user: Mapped["User | None"] = relationship(back_populates="blog_posts")
     img_url: Mapped[str] = mapped_column(String(250), nullable=False)
+    comments: Mapped[list["Comment"]] = relationship(
+        back_populates="post", cascade="all, delete-orphan"
+    )
 
 
 class User(UserMixin, db.Model):
@@ -85,6 +87,19 @@ class User(UserMixin, db.Model):
     password: Mapped[str] = mapped_column(String(100))
     name: Mapped[str] = mapped_column(String(1000))
     blog_posts: Mapped[list["BlogPost"]] = relationship(back_populates="user")
+    comments: Mapped[list["Comment"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class Comment(db.Model):
+    __tablename__ = "comments"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False)
+    post_id: Mapped[int] = mapped_column(ForeignKey("blog_posts.id"), nullable=False)
+    user: Mapped["User"] = relationship(back_populates="comments")
+    post: Mapped["BlogPost"] = relationship(back_populates="comments")
 
 
 with app.app_context():
@@ -148,12 +163,21 @@ def get_all_posts():
     return render_template("index.html", all_posts=posts)
 
 
-# TODO: Allow logged-in users to comment on posts
-@app.route("/post/<int:post_id>")
-@admin_only
+@app.route("/post/<int:post_id>", methods=["GET", "POST"])
+@login_required
 def show_post(post_id):
     requested_post = db.get_or_404(BlogPost, post_id)
-    return render_template("post.html", post=requested_post)
+    form = CreateCommentForm()
+    if form.validate_on_submit():
+        comment = Comment(
+            text=form.text.data,
+            user=current_user,
+            post=requested_post,
+        )
+        db.session.add(comment)
+        db.session.commit()
+        return redirect(url_for("show_post", post_id=requested_post.id))
+    return render_template("post.html", post=requested_post, form=form)
 
 
 @app.route("/new-post", methods=["GET", "POST"])
