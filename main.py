@@ -13,7 +13,7 @@ from flask_login import (
 )
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import relationship, DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import Integer, String, Text
+from sqlalchemy import ForeignKey, Integer, String, Text
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 from forms import CreatePostForm, UserLoginForm, UserRegisterForm
@@ -74,6 +74,8 @@ class BlogPost(db.Model):
     date: Mapped[str] = mapped_column(String(250), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     author: Mapped[str] = mapped_column(String(250), nullable=False)
+    author_id: Mapped[int | None] = mapped_column(ForeignKey("user.id"), nullable=True)
+    user: Mapped["User | None"] = relationship(back_populates="blog_posts")
     img_url: Mapped[str] = mapped_column(String(250), nullable=False)
 
 
@@ -82,6 +84,7 @@ class User(UserMixin, db.Model):
     email: Mapped[str] = mapped_column(String(100), unique=True)
     password: Mapped[str] = mapped_column(String(100))
     name: Mapped[str] = mapped_column(String(1000))
+    blog_posts: Mapped[list["BlogPost"]] = relationship(back_populates="user")
 
 
 with app.app_context():
@@ -163,7 +166,8 @@ def add_new_post():
             subtitle=form.subtitle.data,
             body=form.body.data,
             img_url=form.img_url.data,
-            author=current_user,
+            author=current_user.name,
+            user=current_user,
             date=date.today().strftime("%B %d, %Y"),
         )
         db.session.add(new_post)
@@ -187,7 +191,8 @@ def edit_post(post_id):
         post.title = edit_form.title.data
         post.subtitle = edit_form.subtitle.data
         post.img_url = edit_form.img_url.data
-        post.author = current_user
+        post.author = current_user.name
+        post.user = current_user
         post.body = edit_form.body.data
         db.session.commit()
         return redirect(url_for("show_post", post_id=post.id))
